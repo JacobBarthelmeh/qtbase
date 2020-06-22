@@ -7,13 +7,17 @@
 
     "commandline": {
         "assignments": {
-            "OPENSSL_PATH": "openssl.prefix"
+            "OPENSSL_PATH": "openssl.prefix",
+            "WOLFSSL_PATH": "wolfssl.prefix"
         },
         "options": {
             "libproxy": "boolean",
             "openssl": { "type": "optionalString", "values": [ "no", "yes", "linked", "runtime" ] },
             "openssl-linked": { "type": "void", "name": "openssl", "value": "linked" },
             "openssl-runtime": { "type": "void", "name": "openssl", "value": "runtime" },
+            "wolfssl": { "type": "optionalString", "values": [ "no", "yes", "linked" ] },
+            "wolfssl-linked": { "type": "void", "name": "wolfssl", "value": "linked" },
+            "wolfssl-runtime": { "type": "void", "name": "wolfssl", "value": "runtime" },
             "dtls": "boolean",
             "ocsp": "boolean",
             "sctp": "boolean",
@@ -61,11 +65,11 @@
             "export": "openssl",
             "test": {
                 "tail": [
-                    "#if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER-0 < 0x10101000L",
-                    "#  error OpenSSL >= 1.1.1 is required",
+                    "#if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER-0 < 0x10000000L && !defined(WOLFSSL_QT)",
+                    "#  error OpenSSL >= 1.0.0 is required",
                     "#endif",
-                    "#if !defined(OPENSSL_NO_EC) && !defined(SSL_CTRL_SET_CURVES)",
-                    "#  error OpenSSL was reported as >= 1.1.1 but is missing required features, possibly it's libressl which is unsupported",
+                    "#if OPENSSL_VERSION_NUMBER-0 >= 0x10002000L && !defined(OPENSSL_NO_EC) && !defined(SSL_CTRL_SET_CURVES)",
+                    "#  error OpenSSL was reported as >= 1.0.2 but is missing required features, possibly it's libressl which is unsupported",
                     "#endif"
                 ]
             },
@@ -100,6 +104,37 @@
                 {
                     "libs": "-lssl -lcrypto",
                     "condition": "!config.msvc"
+                }
+            ]
+        },
+         "wolfssl_headers": {
+             "label": "wolfSSL Headers with OpenSSL Compatibility",
+             "export": "wolfssl",
+             "test": {
+                 "tail": [
+                     "#ifndef WOLFSSL_QT",
+                     "#   error WOLFSSL_QT not defined in wolfSSL",
+                     "#endif"
+                 ]
+         },
+         "headers": [ "wolfssl/options.h","openssl/ssl.h","openssl/opensslv.h" ],
+         "sources": [
+             {
+                 "comment": "placeholder for WOLFSSL_PATH",
+                 "libs": ""
+             }
+         ]
+        },
+        "wolfssl": {
+            "label": "WolfSSL with OpenSSL Compatibility",
+            "test": {
+                "inherit": "wolfssl_headers",
+                "main": ""
+            },
+            "sources": [
+                { "type": "wolfssl" },
+                {
+                    "libs": "-lwolfssl"
                 }
             ]
         },
@@ -189,6 +224,19 @@
             },
             "use": "network"
         },
+        "openssl11": {
+            "label": "OpenSSL 1.1 support",
+            "type": "compile",
+            "test": {
+                "include": ["openssl/opensslv.h"],
+                "tail": [
+                    "#if !defined(OPENSSL_VERSION_NUMBER) || OPENSSL_VERSION_NUMBER-0 < 0x10100000L",
+                    "#  error OpenSSL >= 1.1 is required",
+                    "#endif"
+                ]
+            },
+            "use": "openssl"
+        },
         "dtls": {
             "label": "DTLS support in OpenSSL",
             "type": "compile",
@@ -264,7 +312,7 @@
         "openssl": {
             "label": "OpenSSL",
             "enable": "false",
-            "condition": "features.openssl-runtime || features.openssl-linked",
+            "condition": "features.openssl-linked && !features.wolfssl",
             "output": [
                 "privateFeature",
                 { "type": "publicQtConfig", "condition": "!features.openssl-linked" },
@@ -275,13 +323,39 @@
             "autoDetect": "!config.wasm",
             "enable": "input.openssl == 'yes' || input.openssl == 'runtime'",
             "disable": "input.openssl == 'no' || input.openssl == 'linked' || input.ssl == 'no'",
-            "condition": "!features.securetransport && !features.schannel && libs.openssl_headers"
+            "condition": "!features.securetransport && !features.schannel && libs.openssl_headers && !features.wolfssl"
         },
         "openssl-linked": {
             "label": "  Qt directly linked to OpenSSL",
             "autoDetect": false,
             "enable": "input.openssl == 'linked'",
-            "condition": "!features.securetransport && !features.schannel && libs.openssl",
+            "condition": "!features.securetransport && !features.schannel && libs.openssl && !features.wolfssl",
+            "output": [
+                "privateFeature",
+                { "type": "define", "name": "QT_LINKED_OPENSSL" }
+            ]
+        },
+        "wolfssl": {
+            "label": "WolfSSL",
+            "enable": "false",
+            "condition": "features.wolfssl-linked && !features.openssl",
+            "output": [
+                "privateFeature",
+                { "type": "publicQtConfig", "condition": "!features.wolfssl-linked" },
+                { "type": "define", "negative": true, "name": "QT_NO_OPENSSL" }
+            ]
+        },
+        "wolfssl-runtime": {
+            "autoDetect": "!config.winrt && !config.wasm",
+            "enable": "input.wolfssl == 'yes' || input.wolfssl == 'runtime'",
+            "disable": "input.wolfssl == 'no' || input.wolfssl == 'linked' || input.ssl == 'no'",
+            "condition": "libs.wolfssl_headers && !features.openssl"
+        },
+        "wolfssl-linked": {
+            "label": "  Qt directly linked to WolfSSL",
+            "autoDetect": false,
+            "enable": "input.wolfssl == 'linked'",
+            "condition": "libs.wolfssl",
             "output": [
                 "privateFeature",
                 { "type": "define", "name": "QT_LINKED_OPENSSL" }
@@ -290,7 +364,7 @@
         "securetransport": {
             "label": "SecureTransport",
             "disable": "input.securetransport == 'no' || input.ssl == 'no'",
-            "condition": "config.darwin && (input.openssl == '' || input.openssl == 'no')",
+            "condition": "config.darwin && (input.openssl == '' || input.openssl == 'no') || (input.wolfssl == '' || input.wolfssl == 'no')",
             "output": [
                 "publicFeature",
                 { "type": "define", "name": "QT_SECURETRANSPORT" }
@@ -299,7 +373,7 @@
         "schannel": {
             "label": "Schannel",
             "disable": "input.schannel == 'no' || input.ssl == 'no'",
-            "condition": "input.schannel == 'yes' && config.win32 && (input.openssl == '' || input.openssl == 'no')",
+            "condition": "input.schannel == 'yes' && config.win32 && !config.winrt && (input.openssl == '' || input.openssl == 'no')",
             "output": [
                 "publicFeature",
                 { "type": "define", "name": "QT_SCHANNEL" }
@@ -307,14 +381,14 @@
         },
         "ssl": {
             "label": "SSL",
-            "condition": "features.securetransport || features.openssl || features.schannel",
+            "condition": "features.securetransport || features.openssl || features.wolfssl || features.schannel",
             "output": [ "publicFeature", "feature" ]
         },
         "dtls": {
             "label": "DTLS",
             "purpose": "Provides a DTLS implementation",
             "section": "Networking",
-            "condition": "features.openssl && features.udpsocket && tests.dtls",
+            "condition": "features.openssl && tests.dtls",
             "output": [ "publicFeature" ]
         },
         "ocsp": {
@@ -326,7 +400,7 @@
         },
         "opensslv11": {
             "label": "OpenSSL 1.1",
-            "condition": "features.openssl",
+            "condition": "features.openssl && tests.openssl11",
             "output": [ "publicFeature" ]
         },
         "sctp": {
@@ -432,7 +506,7 @@
     "report": [
         {
             "type": "note",
-            "condition": "!config.android && features.openssl-linked && libs.openssl.source != 0
+            "condition": "features.openssl-linked && libs.openssl.source != 0
                           && input.openssl.prefix == '' && input.openssl.libs == '' && input.openssl.libs.debug == ''",
             "message": "When linking against OpenSSL, you can override the default
 library names through OPENSSL_LIBS.
@@ -474,6 +548,8 @@ For example:
                 "openssl",
                 "openssl-linked",
                 "opensslv11",
+                "wolfssl",
+                "wolfssl-linked",
                 "dtls",
                 "ocsp",
                 "ftp",

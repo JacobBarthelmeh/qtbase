@@ -17,9 +17,12 @@ qtConfig(ssl) {
             qsslsocket_onDemandCertificates_static
 
         qtConfig(dtls) {
-            SUBDIRS += \
-                qdtlscookie \
-                qdtls
+            # wolfSSl with DTLS and Qt soon to be released
+            !qtConfig(wolfssl) {
+                SUBDIRS += \
+                    qdtlscookie \
+                    qdtls
+            }
         }
 
         qtConfig(ocsp): SUBDIRS += qocsp

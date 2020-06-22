@@ -252,6 +252,7 @@ Core options:
 
 Network options:
 
+  -wolfssl-linked ...... Use wolfSSL and link to libwolfssl [no]
   -ssl ................. Enable either SSL support method [auto]
   -no-openssl .......... Do not use OpenSSL [default on Apple]
   -openssl-linked ...... Use OpenSSL and link to libssl [no]
